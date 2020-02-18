@@ -1357,7 +1357,7 @@ list tom hanks movies for me,O B_person I_person O O O
 movies with tom hanks,O O B_cast I_cast
 show me tom hanks movies,O O B_person I_person O
 show tom hanks movies,O B_person I_person O
-tell me what movies tom hanks star in,O¬¥O O O B_cast I_cast O O
+tell me what movies tom hanks star in,O O O O B_cast I_cast O O
 tom hanks movies,B_person I_person O
 watch tom hanks,O B_cast I_cast
 what other movies did tom hanks star in,O O O O B_cast I_cast O O

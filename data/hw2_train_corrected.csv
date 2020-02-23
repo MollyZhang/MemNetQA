@@ -701,7 +701,7 @@ what language is spoken in indochine,O O O O O B_movie
 language of the film revanche,O O O O B_movie
 what language was aguirre wrath of god in,O O O B_movie I_movie I_movie I_movie O
 what language is passion of the christ in,O O O B_movie I_movie I_movie I_movie O
-i want to know in what language was ju on filmed,O O O O O O O O B_movie I-movie O
+i want to know in what language was ju on filmed,O O O O O O O O B_movie I_movie O
 i want to know the original language of ju on,O O O O O O O O B_movie I_movie
 tell me the language of ju on,O O O O O B_movie I_movie
 what language is ju on on,O O O B_movie I_movie O

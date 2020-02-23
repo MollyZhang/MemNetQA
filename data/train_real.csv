@@ -390,7 +390,7 @@ when can the help be released,O O B_movie I_movie O O
 tell me when compliance came out,O O O B_movie O O
 when is sinister hitting theaters,O O B_movie O O
 release date for the hunger games,O O O B_movie I_movie I_movie
-when was the first hunger games shown,O O B_movie O I_movie I_movie O
+when was the first hunger games shown,O O O O B_movie I_movie O
 when was avengers released,O O B_movie O
 when was lawless released,O O B_movie O
 release date of snow white and the huntsman,O O O B_movie I_movie I_movie I_movie I_movie
@@ -425,7 +425,7 @@ who are the directors of gone with the wind,O O O O O B_movie I_movie I_movie I_
 who directed gone with the wind,O O B_movie I_movie I_movie I_movie
 who directed gone with the wind,O O B_movie I_movie I_movie I_movie
 who directed gone with the wind,O O B_movie I_movie I_movie I_movie
-who directed the movie,O O I_movie O
+who directed the movie,O O O O
 show me details about the directors of gone with the wind,O O O O O O O B_movie I_movie I_movie I_movie
 who directed black swan,O O B_movie I_movie
 who 's the director of pi,O O O O O B_movie
@@ -627,7 +627,7 @@ what language is spoken in indochine,O O O O O B_movie
 language of the film revanche,O O O O B_movie
 what language was aguirre wrath of god in,O O O B_movie I_movie I_movie I_movie O
 what language is passion of the christ in,O O O B_movie I_movie I_movie I_movie O
-i want to know in what language was ju on filmed,O O O O O O O O B_movie I-movie O
+i want to know in what language was ju on filmed,O O O O O O O O B_movie I_movie O
 what language is ju on on,O O O B_movie I_movie O
 what language is the movie elling in,O O O O O B_movie O
 language of a separation,O O B_movie I_movie
@@ -1522,7 +1522,7 @@ find info about star wars episode four,O O O B_movie I_movie I_movie I_movie
 get me info on star wars episode four,O O O O B_movie I_movie I_movie I_movie
 get me star wars episode four details,O O B_movie I_movie I_movie I_movie O
 i want to see info about star wars four,O O O O O O B_movie I_movie I_movie
-run a search for star wars four,O I_movie O O B_movie I_movie I_movie
+run a search for star wars four,O O O O B_movie I_movie I_movie
 show me star wars four,O O B_movie I_movie I_movie
 show me star wars four page,O O B_movie I_movie I_movie O
 star wars four,B_movie I_movie I_movie
@@ -1881,7 +1881,7 @@ information for vivian lee,O O B_person I_person
 name the producer of the godfather,O O O O B_movie I_movie
 what is the name of the company that produced sparkle,O O O O O O O O O B_movie
 show me the name of the producer of the movie avatar,O O O O O O O O O O B_movie
-can you show me the name of the producer for cabin in the woods,O O O O O O O O O O I_movie I_movie I_movie I_movie
+can you show me the name of the producer for cabin in the woods,O O O O O O O O O O B_movie I_movie I_movie I_movie
 what is the name of the company that produced the movie avatar,O O O O O O O O O O O B_movie
 please provide the name of the company that produced sparkle,O O O O O O O O O B_movie
 what is the name of the company that produced the movie inception,O O O O O O O O O O O B_movie

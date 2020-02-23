@@ -6,24 +6,20 @@ import torch
 import evaluation
 
 
-def get_submission(model=None, data=None):
+
+def get_submission(model=None, data=None, filename_extension=""):
+    idx2label = {i:label for i, label in enumerate(np.load("./data/labels.npy"))}
     model.eval()
     labels = np.load("./data/labels.npy")
-    final_labels = []
-    for x, y, _ in data:
-        pred = (torch.sigmoid(model((x, _["raw_text"]))) > 0.5).int().cpu().numpy()
-        batch_size, num_class = pred.shape
-        for i in range(batch_size):
-            pred_idx = np.arange(num_class)[(pred[i] == 1).astype('bool')] 
-            if len(pred_idx) == 0:
-                pred_idx = [np.argmax(pred[i]).item()]
-            pred_label = [labels[j] for j in pred_idx]
-            #if "NO_REL" in pred_label and len(pred_label) > 1:
-            #   pred_label.remove("NO_REL")
-            final_labels.append(
-                {"ID": int(_["ID"][i]),
-                 "CORE RELATIONS": " ".join(pred_label)})
-    return pd.DataFrame(final_labels).sort_values(by="ID").set_index("ID")
+    rows = []
+    for batch in data:
+        preds = model(batch)
+        labels = [idx2label[i.item()] for i in torch.argmax(preds, dim=1)]
+        rows.append({"index": batch.sample_id, "labels": " ".join(labels)})
+    df = pd.DataFrame(rows).sort_values(by="index")
+    fname = "prediction{}.txt".format(filename_extension)
+    df[["labels"]].to_csv(fname, index=None, header=None)
+    print("prediction file saved to:", fname)
 
 
 class Ensemble(object):

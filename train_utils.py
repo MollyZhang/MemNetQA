@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
+import numpy as np
 
 import evaluation
 from seqeval.metrics import f1_score
@@ -59,7 +60,7 @@ def train(train_data, val_data, model, lr=1e-3, patience=10, max_epoch=100,
 
 
 def calculate_score(val_data, model, loss_func):
-    idx2label = {i:label for i, label in enumerate(np.load("./data/labels.np"))}
+    idx2label = {i:label for i, label in enumerate(np.load("./data/labels.npy"))}
     model.eval() 
     val_loss = 0.0
     y_pred = []
@@ -70,8 +71,6 @@ def calculate_score(val_data, model, loss_func):
         val_loss += loss.item() * batch.batch_size
         labels = [idx2label[i.item()] for i in torch.argmax(preds, dim=1)]
         assert(len(labels) == len(batch.raw_label))
-        print("y true", batch.raw_label)
-        print("y pred", labels)
         y_pred.append(labels)
         y_true.append(batch.raw_label)
     val_loss /= len(val_data)

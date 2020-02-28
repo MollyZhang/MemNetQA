@@ -13,7 +13,7 @@ def get_submission(model=None, data=None, filename_extension=""):
     labels = np.load("./data/labels.npy")
     rows = []
     for batch in data:
-        preds = model(batch)
+        preds = model(batch).squeeze(dim=0)
         labels = [idx2label[i.item()] for i in torch.argmax(preds, dim=1)]
         rows.append({"index": batch.sample_id, "labels": " ".join(labels)})
     df = pd.DataFrame(rows).sort_values(by="index")

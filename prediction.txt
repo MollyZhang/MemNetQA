@@ -249,7 +249,7 @@ O B_movie I_movie O
 O O O O O B_mpaa_rating O O
 O B_person I_person
 O O B_person I_person O O
-O O O O O O O O B_movie I_movie O O O O
+O O O O O O O O I_movie I_movie O O O O
 O O O O B_producer
 O O O O B_movie I_movie O
 O O O O O B_subject I_subject
@@ -352,7 +352,7 @@ O O O B_subject
 O O O O B_director I_director
 O O O O O O B_country O
 O O O B_country
-O O O B_language I_language
+O O O B_language I_movie
 O O O O O B_mpaa_rating O
 O B_person I_person O
 O O O O O O O O O O O B_subject I_subject I_subject
@@ -636,7 +636,7 @@ O O O O O O O O B_mpaa_rating
 O O O O O B_country O O O O
 O O B_person I_person O
 O O O B_movie O O O
-O O O O O O O B_country B_country O O
+O O O O O O B_country B_country B_country O O
 O O O O O O O O O B_movie B_movie
 O O B_movie I_movie
 O O O O O O B_movie I_movie O O O

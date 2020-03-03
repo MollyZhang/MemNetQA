@@ -70,6 +70,21 @@ def train(train_data, val_data, model, lr=1e-3, patience=10, max_epoch=100,
     return result
 
 
+def inference(data, model):
+    t0 = time.time()
+    model.eval() # turn on evaluation mode
+    for batch in train_data:
+        opt.zero_grad()
+        preds = model(batch)
+        label = batch.label.reshape(-1)
+        preds = preds.reshape(label.shape[0], -1)
+    epoch_loss = running_loss / len(train_data)
+    
+    t_delta = time.time() - t0
+    train_loss, train_f1 = calculate_score(train_data, best_model, loss_func)
+    return result
+
+
 def calculate_score(val_data, model, loss_func):
     idx2label = {i:label for i, label in enumerate(np.load("./data/labels.npy"))}
     model.eval() 

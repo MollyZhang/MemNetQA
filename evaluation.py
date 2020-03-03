@@ -1,348 +1,277 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Official evaluation script for SQuAD version 2.0.
 
-from collections import defaultdict
+In addition to basic functionality, we also compute additional statistics and
+plot precision-recall curves if an additional na_prob.json file is provided.
+This file is expected to map question ID's to the model's predicted probability
+that a question is unanswerable.
+"""
 import argparse
+import collections
+import json
 import numpy as np
-import pandas as pd
+import os
+import re
+import string
+import sys
 
-def get_entities(seq, suffix=False):
-    """Gets entities from sequence.
-    Args:
-        seq (list): sequence of labels.
-    Returns:
-        list: list of (chunk_type, chunk_start, chunk_end).
-    Example:
-        >>> from seqeval.metrics.sequence_labeling import get_entities
-        >>> seq = ['B-PER', 'I-PER', 'O', 'B-LOC']
-        >>> get_entities(seq)
-        [('PER', 0, 1), ('LOC', 3, 3)]
-    """
-    # for nested list
-    if any(isinstance(s, list) for s in seq):
-        seq = [item for sublist in seq for item in sublist + ['O']]
+OPTS = None
 
-    prev_tag = 'O'
-    prev_type = ''
-    begin_offset = 0
-    chunks = []
-    for i, chunk in enumerate(seq + ['O']):
-        if suffix:
-            tag = chunk[-1]
-            type_ = chunk.split('-')[0]
-        else:
-            tag = chunk[0]
-            type_ = chunk.split('-')[-1]
+def parse_args():
+  parser = argparse.ArgumentParser('Official evaluation script for SQuAD version 2.0.')
+  parser.add_argument('data_file', metavar='data.json', help='Input data JSON file.')
+  parser.add_argument('pred_file', metavar='pred.json', help='Model predictions.')
+  parser.add_argument('--out-file', '-o', metavar='eval.json',
+                      help='Write accuracy metrics to file (default is stdout).')
+  parser.add_argument('--na-prob-file', '-n', metavar='na_prob.json',
+                      help='Model estimates of probability of no answer.')
+  parser.add_argument('--na-prob-thresh', '-t', type=float, default=1.0,
+                      help='Predict "" if no-answer probability exceeds this (default = 1.0).')
+  parser.add_argument('--out-image-dir', '-p', metavar='out_images', default=None,
+                      help='Save precision-recall curves to directory.')
+  parser.add_argument('--verbose', '-v', action='store_true')
+  if len(sys.argv) == 1:
+    parser.print_help()
+    sys.exit(1)
+  return parser.parse_args()
 
-        if end_of_chunk(prev_tag, tag, prev_type, type_):
-            chunks.append((prev_type, begin_offset, i-1))
-        if start_of_chunk(prev_tag, tag, prev_type, type_):
-            begin_offset = i
-        prev_tag = tag
-        prev_type = type_
+def make_qid_to_has_ans(dataset):
+  qid_to_has_ans = {}
+  for article in dataset:
+    for p in article['paragraphs']:
+      for qa in p['qas']:
+        qid_to_has_ans[qa['id']] = bool(qa['answers'])
+  return qid_to_has_ans
 
-    return chunks
+def normalize_answer(s):
+  """Lower text and remove punctuation, articles and extra whitespace."""
+  def remove_articles(text):
+    regex = re.compile(r'\b(a|an|the)\b', re.UNICODE)
+    return re.sub(regex, ' ', text)
+  def white_space_fix(text):
+    return ' '.join(text.split())
+  def remove_punc(text):
+    exclude = set(string.punctuation)
+    return ''.join(ch for ch in text if ch not in exclude)
+  def lower(text):
+    return text.lower()
+  return white_space_fix(remove_articles(remove_punc(lower(s))))
 
+def get_tokens(s):
+  if not s: return []
+  return normalize_answer(s).split()
 
-def end_of_chunk(prev_tag, tag, prev_type, type_):
-    """Checks if a chunk ended between the previous and current word.
-    Args:
-        prev_tag: previous chunk tag.
-        tag: current chunk tag.
-        prev_type: previous type.
-        type_: current type.
-    Returns:
-        chunk_end: boolean.
-    """
-    chunk_end = False
+def compute_exact(a_gold, a_pred):
+  return int(normalize_answer(a_gold) == normalize_answer(a_pred))
 
-    if prev_tag == 'E': chunk_end = True
-    if prev_tag == 'S': chunk_end = True
+def compute_f1(a_gold, a_pred):
+  gold_toks = get_tokens(a_gold)
+  pred_toks = get_tokens(a_pred)
+  common = collections.Counter(gold_toks) & collections.Counter(pred_toks)
+  num_same = sum(common.values())
+  if len(gold_toks) == 0 or len(pred_toks) == 0:
+    # If either is no-answer, then F1 is 1 if they agree, 0 otherwise
+    return int(gold_toks == pred_toks)
+  if num_same == 0:
+    return 0
+  precision = 1.0 * num_same / len(pred_toks)
+  recall = 1.0 * num_same / len(gold_toks)
+  f1 = (2 * precision * recall) / (precision + recall)
+  return f1
 
-    if prev_tag == 'B' and tag == 'B': chunk_end = True
-    if prev_tag == 'B' and tag == 'S': chunk_end = True
-    if prev_tag == 'B' and tag == 'O': chunk_end = True
-    if prev_tag == 'I' and tag == 'B': chunk_end = True
-    if prev_tag == 'I' and tag == 'S': chunk_end = True
-    if prev_tag == 'I' and tag == 'O': chunk_end = True
+def get_raw_scores(dataset, preds):
+  exact_scores = {}
+  f1_scores = {}
+  for article in dataset:
+    for p in article['paragraphs']:
+      for qa in p['qas']:
+        qid = qa['id']
+        gold_answers = [a['text'] for a in qa['answers']
+                        if normalize_answer(a['text'])]
+        if not gold_answers:
+          # For unanswerable questions, only correct answer is empty string
+          gold_answers = ['']
+        if qid not in preds:
+          print('Missing prediction for %s' % qid)
+          continue
+        a_pred = preds[qid]
+        # Take max over all gold answers
+        exact_scores[qid] = max(compute_exact(a, a_pred) for a in gold_answers)
+        f1_scores[qid] = max(compute_f1(a, a_pred) for a in gold_answers)
+  return exact_scores, f1_scores
 
-    if prev_tag != 'O' and prev_tag != '.' and prev_type != type_:
-        chunk_end = True
+def apply_no_ans_threshold(scores, na_probs, qid_to_has_ans, na_prob_thresh):
+  new_scores = {}
+  for qid, s in scores.items():
+    pred_na = na_probs[qid] > na_prob_thresh
+    if pred_na:
+      new_scores[qid] = float(not qid_to_has_ans[qid])
+    else:
+      new_scores[qid] = s
+  return new_scores
 
-    return chunk_end
+def make_eval_dict(exact_scores, f1_scores, qid_list=None):
+  if not qid_list:
+    total = len(exact_scores)
+    return collections.OrderedDict([
+        ('exact', 100.0 * sum(exact_scores.values()) / total),
+        ('f1', 100.0 * sum(f1_scores.values()) / total),
+        ('total', total),
+    ])
+  else:
+    total = len(qid_list)
+    return collections.OrderedDict([
+        ('exact', 100.0 * sum(exact_scores[k] for k in qid_list) / total),
+        ('f1', 100.0 * sum(f1_scores[k] for k in qid_list) / total),
+        ('total', total),
+    ])
 
+def merge_eval(main_eval, new_eval, prefix):
+  for k in new_eval:
+    main_eval['%s_%s' % (prefix, k)] = new_eval[k]
 
-def start_of_chunk(prev_tag, tag, prev_type, type_):
-    """Checks if a chunk started between the previous and current word.
-    Args:
-        prev_tag: previous chunk tag.
-        tag: current chunk tag.
-        prev_type: previous type.
-        type_: current type.
-    Returns:
-        chunk_start: boolean.
-    """
-    chunk_start = False
+def plot_pr_curve(precisions, recalls, out_image, title):
+  plt.step(recalls, precisions, color='b', alpha=0.2, where='post')
+  plt.fill_between(recalls, precisions, step='post', alpha=0.2, color='b')
+  plt.xlabel('Recall')
+  plt.ylabel('Precision')
+  plt.xlim([0.0, 1.05])
+  plt.ylim([0.0, 1.05])
+  plt.title(title)
+  plt.savefig(out_image)
+  plt.clf()
 
-    if tag == 'B': chunk_start = True
-    if tag == 'S': chunk_start = True
+def make_precision_recall_eval(scores, na_probs, num_true_pos, qid_to_has_ans,
+                               out_image=None, title=None):
+  qid_list = sorted(na_probs, key=lambda k: na_probs[k])
+  true_pos = 0.0
+  cur_p = 1.0
+  cur_r = 0.0
+  precisions = [1.0]
+  recalls = [0.0]
+  avg_prec = 0.0
+  for i, qid in enumerate(qid_list):
+    if qid_to_has_ans[qid]:
+      true_pos += scores[qid]
+    cur_p = true_pos / float(i+1)
+    cur_r = true_pos / float(num_true_pos)
+    if i == len(qid_list) - 1 or na_probs[qid] != na_probs[qid_list[i+1]]:
+      # i.e., if we can put a threshold after this point
+      avg_prec += cur_p * (cur_r - recalls[-1])
+      precisions.append(cur_p)
+      recalls.append(cur_r)
+  if out_image:
+    plot_pr_curve(precisions, recalls, out_image, title)
+  return {'ap': 100.0 * avg_prec}
 
-    if prev_tag == 'E' and tag == 'E': chunk_start = True
-    if prev_tag == 'E' and tag == 'I': chunk_start = True
-    if prev_tag == 'S' and tag == 'E': chunk_start = True
-    if prev_tag == 'S' and tag == 'I': chunk_start = True
-    if prev_tag == 'O' and tag == 'E': chunk_start = True
-    if prev_tag == 'O' and tag == 'I': chunk_start = True
+def run_precision_recall_analysis(main_eval, exact_raw, f1_raw, na_probs, 
+                                  qid_to_has_ans, out_image_dir):
+  if out_image_dir and not os.path.exists(out_image_dir):
+    os.makedirs(out_image_dir)
+  num_true_pos = sum(1 for v in qid_to_has_ans.values() if v)
+  if num_true_pos == 0:
+    return
+  pr_exact = make_precision_recall_eval(
+      exact_raw, na_probs, num_true_pos, qid_to_has_ans,
+      out_image=os.path.join(out_image_dir, 'pr_exact.png'),
+      title='Precision-Recall curve for Exact Match score')
+  pr_f1 = make_precision_recall_eval(
+      f1_raw, na_probs, num_true_pos, qid_to_has_ans,
+      out_image=os.path.join(out_image_dir, 'pr_f1.png'),
+      title='Precision-Recall curve for F1 score')
+  oracle_scores = {k: float(v) for k, v in qid_to_has_ans.items()}
+  pr_oracle = make_precision_recall_eval(
+      oracle_scores, na_probs, num_true_pos, qid_to_has_ans,
+      out_image=os.path.join(out_image_dir, 'pr_oracle.png'),
+      title='Oracle Precision-Recall curve (binary task of HasAns vs. NoAns)')
+  merge_eval(main_eval, pr_exact, 'pr_exact')
+  merge_eval(main_eval, pr_f1, 'pr_f1')
+  merge_eval(main_eval, pr_oracle, 'pr_oracle')
 
-    if tag != 'O' and tag != '.' and prev_type != type_:
-        chunk_start = True
+def histogram_na_prob(na_probs, qid_list, image_dir, name):
+  if not qid_list:
+    return
+  x = [na_probs[k] for k in qid_list]
+  weights = np.ones_like(x) / float(len(x))
+  plt.hist(x, weights=weights, bins=20, range=(0.0, 1.0))
+  plt.xlabel('Model probability of no-answer')
+  plt.ylabel('Proportion of dataset')
+  plt.title('Histogram of no-answer probability: %s' % name)
+  plt.savefig(os.path.join(image_dir, 'na_prob_hist_%s.png' % name))
+  plt.clf()
 
-    return chunk_start
+def find_best_thresh(preds, scores, na_probs, qid_to_has_ans):
+  num_no_ans = sum(1 for k in qid_to_has_ans if not qid_to_has_ans[k])
+  cur_score = num_no_ans
+  best_score = cur_score
+  best_thresh = 0.0
+  qid_list = sorted(na_probs, key=lambda k: na_probs[k])
+  for i, qid in enumerate(qid_list):
+    if qid not in scores: continue
+    if qid_to_has_ans[qid]:
+      diff = scores[qid]
+    else:
+      if preds[qid]:
+        diff = -1
+      else:
+        diff = 0
+    cur_score += diff
+    if cur_score > best_score:
+      best_score = cur_score
+      best_thresh = na_probs[qid]
+  return 100.0 * best_score / len(scores), best_thresh
 
+def find_all_best_thresh(main_eval, preds, exact_raw, f1_raw, na_probs, qid_to_has_ans):
+  best_exact, exact_thresh = find_best_thresh(preds, exact_raw, na_probs, qid_to_has_ans)
+  best_f1, f1_thresh = find_best_thresh(preds, f1_raw, na_probs, qid_to_has_ans)
+  main_eval['best_exact'] = best_exact
+  main_eval['best_exact_thresh'] = exact_thresh
+  main_eval['best_f1'] = best_f1
+  main_eval['best_f1_thresh'] = f1_thresh
 
-def f1_score(y_true, y_pred, average='micro', suffix=False):
-    """Compute the F1 score.
-    The F1 score can be interpreted as a weighted average of the precision and
-    recall, where an F1 score reaches its best value at 1 and worst score at 0.
-    The relative contribution of precision and recall to the F1 score are
-    equal. The formula for the F1 score is::
-        F1 = 2 * (precision * recall) / (precision + recall)
-    Args:
-        y_true : 2d array. Ground truth (correct) target values.
-        y_pred : 2d array. Estimated targets as returned by a tagger.
-    Returns:
-        score : float.
-    Example:
-        >>> from seqeval.metrics import f1_score
-        >>> y_true = [['O', 'O', 'O', 'B-MISC', 'I-MISC', 'I-MISC', 'O'], ['B-PER', 'I-PER', 'O']]
-        >>> y_pred = [['O', 'O', 'B-MISC', 'I-MISC', 'I-MISC', 'I-MISC', 'O'], ['B-PER', 'I-PER', 'O']]
-        >>> f1_score(y_true, y_pred)
-        0.50
-    """
-    true_entities = set(get_entities(y_true, suffix))
-    pred_entities = set(get_entities(y_pred, suffix))
-
-    nb_correct = len(true_entities & pred_entities)
-    nb_pred = len(pred_entities)
-    nb_true = len(true_entities)
-
-    p = nb_correct / nb_pred if nb_pred > 0 else 0
-    r = nb_correct / nb_true if nb_true > 0 else 0
-    score = 2 * p * r / (p + r) if p + r > 0 else 0
-
-    return score
-
-
-def accuracy_score(y_true, y_pred):
-    """Accuracy classification score.
-    In multilabel classification, this function computes subset accuracy:
-    the set of labels predicted for a sample must *exactly* match the
-    corresponding set of labels in y_true.
-    Args:
-        y_true : 2d array. Ground truth (correct) target values.
-        y_pred : 2d array. Estimated targets as returned by a tagger.
-    Returns:
-        score : float.
-    Example:
-        >>> from seqeval.metrics import accuracy_score
-        >>> y_true = [['O', 'O', 'O', 'B-MISC', 'I-MISC', 'I-MISC', 'O'], ['B-PER', 'I-PER', 'O']]
-        >>> y_pred = [['O', 'O', 'B-MISC', 'I-MISC', 'I-MISC', 'I-MISC', 'O'], ['B-PER', 'I-PER', 'O']]
-        >>> accuracy_score(y_true, y_pred)
-        0.80
-    """
-    if any(isinstance(s, list) for s in y_true):
-        y_true = [item for sublist in y_true for item in sublist]
-        y_pred = [item for sublist in y_pred for item in sublist]
-
-    nb_correct = sum(y_t==y_p for y_t, y_p in zip(y_true, y_pred))
-    nb_true = len(y_true)
-
-    score = nb_correct / nb_true
-
-    return score
-
-
-def precision_score(y_true, y_pred, average='micro', suffix=False):
-    """Compute the precision.
-    The precision is the ratio ``tp / (tp + fp)`` where ``tp`` is the number of
-    true positives and ``fp`` the number of false positives. The precision is
-    intuitively the ability of the classifier not to label as positive a sample.
-    The best value is 1 and the worst value is 0.
-    Args:
-        y_true : 2d array. Ground truth (correct) target values.
-        y_pred : 2d array. Estimated targets as returned by a tagger.
-    Returns:
-        score : float.
-    Example:
-        >>> from seqeval.metrics import precision_score
-        >>> y_true = [['O', 'O', 'O', 'B-MISC', 'I-MISC', 'I-MISC', 'O'], ['B-PER', 'I-PER', 'O']]
-        >>> y_pred = [['O', 'O', 'B-MISC', 'I-MISC', 'I-MISC', 'I-MISC', 'O'], ['B-PER', 'I-PER', 'O']]
-        >>> precision_score(y_true, y_pred)
-        0.50
-    """
-    true_entities = set(get_entities(y_true, suffix))
-    pred_entities = set(get_entities(y_pred, suffix))
-
-    nb_correct = len(true_entities & pred_entities)
-    nb_pred = len(pred_entities)
-
-    score = nb_correct / nb_pred if nb_pred > 0 else 0
-
-    return score
-
-
-def recall_score(y_true, y_pred, average='micro', suffix=False):
-    """Compute the recall.
-    The recall is the ratio ``tp / (tp + fn)`` where ``tp`` is the number of
-    true positives and ``fn`` the number of false negatives. The recall is
-    intuitively the ability of the classifier to find all the positive samples.
-    The best value is 1 and the worst value is 0.
-    Args:
-        y_true : 2d array. Ground truth (correct) target values.
-        y_pred : 2d array. Estimated targets as returned by a tagger.
-    Returns:
-        score : float.
-    Example:
-        >>> from seqeval.metrics import recall_score
-        >>> y_true = [['O', 'O', 'O', 'B-MISC', 'I-MISC', 'I-MISC', 'O'], ['B-PER', 'I-PER', 'O']]
-        >>> y_pred = [['O', 'O', 'B-MISC', 'I-MISC', 'I-MISC', 'I-MISC', 'O'], ['B-PER', 'I-PER', 'O']]
-        >>> recall_score(y_true, y_pred)
-        0.50
-    """
-    true_entities = set(get_entities(y_true, suffix))
-    pred_entities = set(get_entities(y_pred, suffix))
-
-    nb_correct = len(true_entities & pred_entities)
-    nb_true = len(true_entities)
-
-    score = nb_correct / nb_true if nb_true > 0 else 0
-
-    return score
-
-
-def performance_measure(y_true, y_pred):
-    """
-    Compute the performance metrics: TP, FP, FN, TN
-    Args:
-        y_true : 2d array. Ground truth (correct) target values.
-        y_pred : 2d array. Estimated targets as returned by a tagger.
-    Returns:
-        performance_dict : dict
-    Example:
-        >>> from seqeval.metrics import performance_measure
-        >>> y_true = [['O', 'O', 'O', 'B-MISC', 'I-MISC', 'O', 'B-ORG'], ['B-PER', 'I-PER', 'O']]
-        >>> y_pred = [['O', 'O', 'B-MISC', 'I-MISC', 'I-MISC', 'O', 'O'], ['B-PER', 'I-PER', 'O']]
-        >>> performance_measure(y_true, y_pred)
-        (3, 3, 1, 4)
-    """
-    performace_dict = dict()
-    if any(isinstance(s, list) for s in y_true):
-        y_true = [item for sublist in y_true for item in sublist]
-        y_pred = [item for sublist in y_pred for item in sublist]
-    performace_dict['TP'] = sum(y_t == y_p for y_t, y_p in zip(y_true, y_pred)
-                                if ((y_t != 'O') or (y_p != 'O')))
-    performace_dict['FP'] = sum(y_t != y_p for y_t, y_p in zip(y_true, y_pred))
-    performace_dict['FN'] = sum(((y_t != 'O') and (y_p == 'O'))
-                                for y_t, y_p in zip(y_true, y_pred))
-    performace_dict['TN'] = sum((y_t == y_p == 'O')
-                                for y_t, y_p in zip(y_true, y_pred))
-
-    return performace_dict
-
-
-def classification_report(y_true, y_pred, digits=2, suffix=False):
-    """Build a text report showing the main classification metrics.
-    Args:
-        y_true : 2d array. Ground truth (correct) target values.
-        y_pred : 2d array. Estimated targets as returned by a classifier.
-        digits : int. Number of digits for formatting output floating point values.
-    Returns:
-        report : string. Text summary of the precision, recall, F1 score for each class.
-    Examples:
-        >>> from seqeval.metrics import classification_report
-        >>> y_true = [['O', 'O', 'O', 'B-MISC', 'I-MISC', 'I-MISC', 'O'], ['B-PER', 'I-PER', 'O']]
-        >>> y_pred = [['O', 'O', 'B-MISC', 'I-MISC', 'I-MISC', 'I-MISC', 'O'], ['B-PER', 'I-PER', 'O']]
-        >>> print(classification_report(y_true, y_pred))
-                     precision    recall  f1-score   support
-        <BLANKLINE>
-               MISC       0.00      0.00      0.00         1
-                PER       1.00      1.00      1.00         1
-        <BLANKLINE>
-          micro avg       0.50      0.50      0.50         2
-          macro avg       0.50      0.50      0.50         2
-        <BLANKLINE>
-    """
-    true_entities = set(get_entities(y_true, suffix))
-    pred_entities = set(get_entities(y_pred, suffix))
-
-    name_width = 0
-    d1 = defaultdict(set)
-    d2 = defaultdict(set)
-    for e in true_entities:
-        d1[e[0]].add((e[1], e[2]))
-        name_width = max(name_width, len(e[0]))
-    for e in pred_entities:
-        d2[e[0]].add((e[1], e[2]))
-
-    last_line_heading = 'macro avg'
-    width = max(name_width, len(last_line_heading), digits)
-
-    headers = ["precision", "recall", "f1-score", "support"]
-    head_fmt = u'{:>{width}s} ' + u' {:>9}' * len(headers)
-    report = head_fmt.format(u'', *headers, width=width)
-    report += u'\n\n'
-
-    row_fmt = u'{:>{width}s} ' + u' {:>9.{digits}f}' * 3 + u' {:>9}\n'
-
-    ps, rs, f1s, s = [], [], [], []
-    for type_name, true_entities in d1.items():
-        pred_entities = d2[type_name]
-        nb_correct = len(true_entities & pred_entities)
-        nb_pred = len(pred_entities)
-        nb_true = len(true_entities)
-
-        p = nb_correct / nb_pred if nb_pred > 0 else 0
-        r = nb_correct / nb_true if nb_true > 0 else 0
-        f1 = 2 * p * r / (p + r) if p + r > 0 else 0
-
-        report += row_fmt.format(*[type_name, p, r, f1, nb_true], width=width, digits=digits)
-
-        ps.append(p)
-        rs.append(r)
-        f1s.append(f1)
-        s.append(nb_true)
-
-    report += u'\n'
-
-    # compute averages
-    report += row_fmt.format('micro avg',
-                             precision_score(y_true, y_pred, suffix=suffix),
-                             recall_score(y_true, y_pred, suffix=suffix),
-                             f1_score(y_true, y_pred, suffix=suffix),
-                             np.sum(s),
-                             width=width, digits=digits)
-    report += row_fmt.format(last_line_heading,
-                             np.average(ps, weights=s),
-                             np.average(rs, weights=s),
-                             np.average(f1s, weights=s),
-                             np.sum(s),
-                             width=width, digits=digits)
-
-    return report
-
-def opener(filename):
-    with open(filename, 'r') as f:
-        return [line.strip().split(' ') for line in f.readlines()]
+def main():
+  with open(OPTS.data_file) as f:
+    dataset_json = json.load(f)
+    dataset = dataset_json['data']
+  with open(OPTS.pred_file) as f:
+    preds = json.load(f)
+  if OPTS.na_prob_file:
+    with open(OPTS.na_prob_file) as f:
+      na_probs = json.load(f)
+  else:
+    na_probs = {k: 0.0 for k in preds}
+  qid_to_has_ans = make_qid_to_has_ans(dataset)  # maps qid to True/False
+  has_ans_qids = [k for k, v in qid_to_has_ans.items() if v]
+  no_ans_qids = [k for k, v in qid_to_has_ans.items() if not v]
+  exact_raw, f1_raw = get_raw_scores(dataset, preds)
+  exact_thresh = apply_no_ans_threshold(exact_raw, na_probs, qid_to_has_ans,
+                                        OPTS.na_prob_thresh)
+  f1_thresh = apply_no_ans_threshold(f1_raw, na_probs, qid_to_has_ans,
+                                     OPTS.na_prob_thresh)
+  out_eval = make_eval_dict(exact_thresh, f1_thresh)
+  if has_ans_qids:
+    has_ans_eval = make_eval_dict(exact_thresh, f1_thresh, qid_list=has_ans_qids)
+    merge_eval(out_eval, has_ans_eval, 'HasAns')
+  if no_ans_qids:
+    no_ans_eval = make_eval_dict(exact_thresh, f1_thresh, qid_list=no_ans_qids)
+    merge_eval(out_eval, no_ans_eval, 'NoAns')
+  if OPTS.na_prob_file:
+    find_all_best_thresh(out_eval, preds, exact_raw, f1_raw, na_probs, qid_to_has_ans)
+  if OPTS.na_prob_file and OPTS.out_image_dir:
+    run_precision_recall_analysis(out_eval, exact_raw, f1_raw, na_probs, 
+                                  qid_to_has_ans, OPTS.out_image_dir)
+    histogram_na_prob(na_probs, has_ans_qids, OPTS.out_image_dir, 'hasAns')
+    histogram_na_prob(na_probs, no_ans_qids, OPTS.out_image_dir, 'noAns')
+  if OPTS.out_file:
+    with open(OPTS.out_file, 'w') as f:
+      json.dump(out_eval, f)
+  else:
+    print(json.dumps(out_eval, indent=2))
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--test', action='store_true')
-    args = parser.parse_args()
-
-    y_true = opener('hw2_tags_test.txt') if args.test else opener('hw2_tags_dev.txt')
-    y_pred = opener('prediction.txt')
-
-    print("F1 Score is {:.2f}%".format(f1_score(y_true, y_pred) * 100))
-
+  OPTS = parse_args()
+  if OPTS.out_image_dir:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt 
+  main()
 

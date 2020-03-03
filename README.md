@@ -1,11 +1,10 @@
-# CSE244_ML_for_NLP
-Code for CSE244 winter 2020 homework 2: Slot Filling
+# Memeory network for question answering in SQuAD 
+CSE244 project
 
 ### Staring script:
 run.ipynb
 
 ### Report:
-https://github.com/MollyZhang/CSE244_ML_for_NLP_HW2/blob/master/HW2%20report.pdf
 
 ### Folder structure:
 - model_utils.py

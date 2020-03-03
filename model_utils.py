@@ -20,8 +20,8 @@ class PreTrainedSQuAD(nn.Module):
             "bert-large-uncased-whole-word-masking-finetuned-squad")
 
     def forward(self, batch):
-        answers = []
-        for q in batch.q:
+        answer_dict = {}
+        for q, q_id in zip(batch.q, batch.id):
             inputs = self.tokenizer.encode_plus(q, batch.context, 
                 add_special_tokens=True, return_tensors="pt")
             input_ids = inputs["input_ids"].tolist()[0]
@@ -31,8 +31,8 @@ class PreTrainedSQuAD(nn.Module):
             answer_end = torch.argmax(answer_end_scores) + 1
             answer = self.tokenizer.convert_tokens_to_string(
                 self.tokenizer.convert_ids_to_tokens(input_ids[answer_start:answer_end]))
-            answers.append(answer)
-        return answers
+            answer_dict[q_id] = answer
+        return answer_dict
 
 
 
@@ -66,7 +66,6 @@ class AlBertQA(nn.Module):
             out.append(logits)
         out = torch.stack(out, dim=1)
         return out
-
 
     def prepare_data(self, batch):
         texts = []

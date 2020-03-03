@@ -1,5 +1,6 @@
 import copy
 import time
+import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -72,17 +73,13 @@ def train(train_data, val_data, model, lr=1e-3, patience=10, max_epoch=100,
 
 def inference(data, model):
     t0 = time.time()
-    model.eval() # turn on evaluation mode
-    for batch in train_data:
-        opt.zero_grad()
-        preds = model(batch)
-        label = batch.label.reshape(-1)
-        preds = preds.reshape(label.shape[0], -1)
-    epoch_loss = running_loss / len(train_data)
-    
+    model.eval() 
+    answers = {}
+    for batch in data:
+        answers.update(model(batch))
+    json.dump(answers, open("./data/prediction.json", "w"))
     t_delta = time.time() - t0
-    train_loss, train_f1 = calculate_score(train_data, best_model, loss_func)
-    return result
+    print("inference time ({0} paragraphs): {1:.1f} sec".format(len(data), t_delta))
 
 
 def calculate_score(val_data, model, loss_func):

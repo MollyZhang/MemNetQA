@@ -18,12 +18,13 @@ class PreTrainedSQuAD(nn.Module):
             "bert-large-uncased-whole-word-masking-finetuned-squad")
         self.model = AutoModelForQuestionAnswering.from_pretrained(
             "bert-large-uncased-whole-word-masking-finetuned-squad")
+        self.device = device
 
     def forward(self, batch):
         answer_dict = {}
         for q, q_id in zip(batch.q, batch.id):
             inputs = self.tokenizer.encode_plus(q, batch.context, 
-                add_special_tokens=True, return_tensors="pt")
+                add_special_tokens=True, return_tensors="pt").to(self.device)
             input_ids = inputs["input_ids"].tolist()[0]
             text_tokens = self.tokenizer.convert_ids_to_tokens(input_ids)
             answer_start_scores, answer_end_scores = self.model(**inputs)

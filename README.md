@@ -9,25 +9,21 @@ run.ipynb
 ### Folder structure:
 - model_utils.py
 
-This file contains all models I have tried
+This file contains all models
 - data_utils.py
 
-This contains preparing data from scratch (without using torchtext), including wrappers which generate data variable length data batches for training. 
+This contains preparing data, including wrappers which generate data batches for training. 
 - train_utils.py
 
-This file contains the function used for training and calculating losses during training
+This file contains the function used for training and inference
 - evaluation.py
-
-This file contains calculation of f1 scores, downloaded from canvas. 
-- submission.py
-
-This file generate prediction.txt.
+`
+This file contains calculation of f1 score and exact match scores, downloaded from squad website. 
 - preprocessing.ipynb
 
 This is the notebook for preprocessing.
 
 - run.ipynb
-This should be the starting point. This is where I import all other functions from \*.py files and get results.
-
+This should be the starting point. This is where all other functions from \*.py files are imported and models are run to get results.
 
 

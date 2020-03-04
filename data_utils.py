@@ -13,6 +13,7 @@ def prep_data(json_name, batch_size="paragraph", device="cuda"):
     data_iter = ParaBatch(data)
     return data_iter
 
+
 class ParaBatch(object):
     """  a batch bundles qa from same paragraph together """
     def __init__(self, data, device="cuda"):

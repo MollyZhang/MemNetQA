@@ -82,22 +82,3 @@ def inference(data, model):
     print("inference time ({0} paragraphs): {1:.1f} sec".format(len(data), t_delta))
 
 
-def calculate_score(val_data, model, loss_func):
-    idx2label = {i:label for i, label in enumerate(np.load("./data/labels.npy"))}
-    model.eval() 
-    val_loss = 0.0
-    y_pred = []
-    y_true = []
-    for batch in val_data:
-        preds = model(batch)
-        loss = loss_func(preds.reshape(-1, preds.shape[2]), 
-                         batch.label.reshape(-1))
-        val_loss += loss.item() * batch.batch_size
-        labels = [[idx2label[j.item()] for j in i] 
-                  for i in torch.argmax(preds, dim=2)]
-        y_pred.extend(labels)
-        y_true.extend(batch.raw_label)
-    val_loss /= len(val_data)
-    f1 = f1_score(y_true, y_pred)
-    return val_loss, f1
-

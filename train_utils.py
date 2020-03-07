@@ -77,8 +77,9 @@ def inference(data, model):
     answers = {}
     for batch in data:
         answers.update(model(batch))
-    json.dump(answers, open("./data/prediction.json", "w"))
+    score = evaluation.get_score(data.data, answers)    
     t_delta = time.time() - t0
     print("inference time ({0} paragraphs): {1:.1f} sec".format(len(data), t_delta))
-
+    print("exact match: {}, f1 score: {}".format(score["exact"], score["f1"]))
+    return score
 

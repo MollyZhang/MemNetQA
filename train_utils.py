@@ -50,6 +50,7 @@ def train(train_data, val_data, model,
             print('Epoch: {}, LR: {}, Train Loss: {:.4f}, Val Loss: {:.4f}, Val f1 {:.3f}, epoch time: {:.1f}s'.format(
                 epoch, opt.param_groups[0]['lr'], epoch_loss, val_loss, val_f1, t_delta))
         sec_per_epoch.append(t_delta)
+        torch.cuda.empty_cache()
     train_loss, train_f1 = calculate_score(train_data, best_model)
     result = {"trained_model": best_model, 
               "train f1 score": train_f1, 

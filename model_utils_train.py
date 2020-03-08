@@ -28,11 +28,15 @@ class SimpleDistilBERT(nn.Module):
         start_logits, end_logits = logits[:, :, 0], logits[:, :, 1]
         loss_fct = nn.CrossEntropyLoss(reduction="sum")
         loss = loss_fct(start_logits, starts) + loss_fct(end_logits, ends)
-        
+
         pred_answers = {}
         for i in range(batch.batch_size):
-            s = torch.argmax(start_logits[i]).item()
-            e = torch.argmax(end_logits[i]).item()
+            try:
+                s = torch.argmax(start_logits[i]).item()
+                e = torch.argmax(end_logits[i]).item()
+            except:
+                print(i, start_logits.shape, end_logits.shape)
+                raise
             pred_answer = self.tokenizer.convert_tokens_to_string(
                 self.tokenizer.convert_ids_to_tokens(inputs["input_ids"][i, s:e+1]))
             pred_answers[batch.id[i]] = pred_answer
@@ -41,8 +45,10 @@ class SimpleDistilBERT(nn.Module):
     def prepare_data(self, batch):
         text_pairs = [(batch.context, q) for q in batch.q] 
         max_len = max([len(" ".join([c, q]).split(" ")) for (c, q) in text_pairs])
-        if max_len < 400:
-            max_len = None        
+        if max_len < 340:
+            max_len = None
+        else:
+            max_len = 512        
         inputs = self.tokenizer.batch_encode_plus(batch_text_or_text_pairs=text_pairs,
             add_special_tokens=True, return_token_type_ids=False,
             pad_to_max_length=True, return_tensors="pt", 
@@ -57,6 +63,8 @@ class SimpleDistilBERT(nn.Module):
         for a, a_i in zip(batch.a, batch.a_index):
             start = len(self.tokenizer.tokenize(batch.context[:a_i])) + 1
             end = len(self.tokenizer.tokenize(batch.context[:a_i + len(a)]))
+            if start > 512:
+                start, end = 0, 0
             starts.append(start)
             ends.append(end)
         starts = torch.tensor(starts).to(self.device)
@@ -74,34 +82,3 @@ class AlBertQA(nn.Module):
             albert_base_configuration = AlbertConfig()
         else:
             raise
-        self.tokenizer = BertTokenizer.from_pretrained(bert_name)
-        self.bert = BertModel.from_pretrained(bert_name)
-        self.grucell = nn.GRUCell(self.output_dim, emb_dim)
-        self.fc = nn.Linear(emb_dim, self.output_dim)
-        self.sm = nn.Softmax(dim=1)
-        self.device = device
-
-    def forward(self, batch):
-        input_ids = self.prepare_data(batch)
-        outputs = self.bert(input_ids)
-        label_output = torch.rand(batch.batch_size, self.output_dim).to(self.device)
-        out = []
-        h = torch.mean(outputs[0], dim=1)       
-        for i in range(batch.seq_len):
-            h = self.grucell(label_output, h)
-            logits = self.fc(h)
-            label_output = self.sm(logits)
-            out.append(logits)
-        out = torch.stack(out, dim=1)
-        return out
-
-    def prepare_data(self, batch):
-        texts = []
-        for i in batch.raw_text:
-            text = "[CLS] " + " ".join(i) + " [SEP]"
-            tokenized_text = self.tokenizer.tokenize(text)
-            text_index = self.tokenizer.convert_tokens_to_ids(tokenized_text)
-            texts.append(text_index)
-        return torch.tensor(texts).to(self.device)
-
-

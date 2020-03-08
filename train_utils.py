@@ -12,7 +12,8 @@ import evaluation
 from seqeval.metrics import f1_score
 
 
-def train(train_data, val_data, model, lr=1e-3, patience=10, max_epoch=100,
+def train(train_data, val_data, model, 
+          lr=1e-5, patience=5, max_epoch=100,
           print_freq=1):
     t00 = time.time()
     no_improvement = 0
@@ -30,22 +31,12 @@ def train(train_data, val_data, model, lr=1e-3, patience=10, max_epoch=100,
         model.train() # turn on training mode
         for batch in train_data:
             opt.zero_grad()
-            preds = model(batch)
-            label = batch.label.reshape(-1)
-            preds = preds.reshape(label.shape[0], -1)
-            try:
-                loss = loss_func(preds, label)
-            except:
-                print(preds.shape)
-                print(batch.label.shape)
-                print(batch.raw_label)
-                print(batch.raw_text)
-                raise
+            pred_answers, loss = model(batch)
             loss.backward()
             opt.step()
-            running_loss += loss.item() * batch.batch_size 
-        epoch_loss = running_loss / len(train_data)
-        val_loss, val_f1 = calculate_score(val_data, model, loss_func) 
+            running_loss += loss.item()
+        epoch_loss = running_loss/len(train_data)
+        val_loss, val_f1 = calculate_score(val_data, model) 
         
         if val_f1 > best_val_f1:
             no_improvement = 0
@@ -59,7 +50,7 @@ def train(train_data, val_data, model, lr=1e-3, patience=10, max_epoch=100,
             print('Epoch: {}, LR: {}, Train Loss: {:.4f}, Val Loss: {:.4f}, Val f1 {:.3f}, epoch time: {:.1f}s'.format(
                 epoch, opt.param_groups[0]['lr'], epoch_loss, val_loss, val_f1, t_delta))
         sec_per_epoch.append(t_delta)
-    train_loss, train_f1 = calculate_score(train_data, best_model, loss_func)
+    train_loss, train_f1 = calculate_score(train_data, best_model)
     result = {"trained_model": best_model, 
               "train f1 score": train_f1, 
               "val f1 score": best_val_f1, 
@@ -69,6 +60,20 @@ def train(train_data, val_data, model, lr=1e-3, patience=10, max_epoch=100,
               "total_time": time.time() - t00,
               }
     return result
+
+def calculate_score(data, model):
+    model.eval() 
+    answers = {}
+    running_loss = 0
+    for batch in data:
+        pred_answers, loss = model(batch)
+        running_loss += loss.item() * len(batch)
+        answers.update(pred_answers)    
+    final_loss = running_loss / len(data)
+    score = evaluation.get_score(data.data, answers)    
+    #print(answers)
+    #print(score)
+    return final_loss, score["f1"]
 
 
 def inference(data, model):

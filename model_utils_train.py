@@ -22,13 +22,22 @@ class SimpleDistilBERT(nn.Module):
         self.dropout = nn.Dropout(self.model.config.qa_dropout).to(self.device)
 
     def forward(self, batch):
-        inputs = self.prepare_data(batch)
-        hidden = self.model(**inputs)[0][0]
+        inputs, starts, ends = self.prepare_data(batch)
+        hidden = self.model(**inputs)[0]
         logits = self.linear(self.dropout(hidden))
-        start_logits, end_logits = logits[:, 0], logits[:, 1]
-
-
-        return logits
+        start_logits, end_logits = logits[:, :, 0], logits[:, :, 1]
+        loss_fct = nn.BCEWithLogitsLoss(reduction="sum")
+        loss = loss_fct(start_logits, starts) + loss_fct(end_logits, ends)
+        
+        pred_answers = {}
+        for i in range(batch.batch_size):
+            s = torch.argmax(start_logits[i]).item()
+            e = torch.argmax(end_logits[i]).item()
+            pred_answer = self.tokenizer.convert_tokens_to_string(
+                self.tokenizer.convert_ids_to_tokens(inputs["input_ids"][i, s:e+1]))
+            pred_answers[batch.id[i]] = pred_answer
+        
+        return pred_answers, loss
 
 
     def prepare_data(self, batch):
@@ -45,17 +54,15 @@ class SimpleDistilBERT(nn.Module):
         ends = []
         for a, a_i in zip(batch.a, batch.a_index):
             start = len(self.tokenizer.tokenize(batch.context[:a_i])) + 1
-            end = len(self.tokenizer.tokenize(batch.context[:a_i + len(a)])) + 1
+            end = len(self.tokenizer.tokenize(batch.context[:a_i + len(a)]))
             one_hot_start, one_hot_end = torch.zeros(max_len), torch.zeros(max_len)
             one_hot_start[start] = 1
             one_hot_end[end] = 1
             starts.append(one_hot_start)
             ends.append(one_hot_end)
-        starts = torch.stack(starts).to(self.device)
-        ends = torch.stack(ends).to(self.device)
+        starts = torch.stack(starts).float().to(self.device)
+        ends = torch.stack(ends).float().to(self.device)
         return inputs, starts, ends
-
-
 
 
 

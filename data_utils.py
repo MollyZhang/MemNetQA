@@ -21,6 +21,7 @@ class ParaBatch(object):
         self.data = data
         self.version = version
         self.expand_paragraph()
+        self.num_qa = self.get_num_qa()
 
     def expand_paragraph(self):
         self.paragraph = []
@@ -32,15 +33,18 @@ class ParaBatch(object):
             yield Paragraph(p, version=self.version)
 
     def __len__(self):
-        return len(self.paragraph)
+        return self.num_qa
+
+    def get_num_qa(self):
+        return sum([p.batch_size for p in self])
 
 
 class Paragraph(object):
     def __init__(self, p, version="1.1", device="cuda"):
         self.context = p["context"]
         self.version = version
-        self.num_qa = len(p)
         self.expand_qas(p)
+        self.batch_size = len(self.q)
 
     def expand_qas(self, p):
         self.q = []
@@ -56,3 +60,9 @@ class Paragraph(object):
             self.id.append(qa["id"])
             if self.version == "2.0":
                 self.impossible.append(qa["is_impossible"])
+
+    def __len__(self):
+        return self.batch_size
+
+
+

@@ -26,7 +26,7 @@ class SimpleDistilBERT(nn.Module):
         hidden = self.model(**inputs)[0]
         logits = self.linear(self.dropout(hidden))
         start_logits, end_logits = logits[:, :, 0], logits[:, :, 1]
-        loss_fct = nn.BCEWithLogitsLoss(reduction="sum")
+        loss_fct = nn.CrossEntropyLoss(reduction="sum")
         loss = loss_fct(start_logits, starts) + loss_fct(end_logits, ends)
         
         pred_answers = {}
@@ -36,15 +36,17 @@ class SimpleDistilBERT(nn.Module):
             pred_answer = self.tokenizer.convert_tokens_to_string(
                 self.tokenizer.convert_ids_to_tokens(inputs["input_ids"][i, s:e+1]))
             pred_answers[batch.id[i]] = pred_answer
-        
-        return pred_answers, loss
-
+        return pred_answers, loss, logits
 
     def prepare_data(self, batch):
         text_pairs = [(batch.context, q) for q in batch.q] 
+        max_len = max([len(" ".join([c, q]).split(" ")) for (c, q) in text_pairs])
+        if max_len < 400:
+            max_len = None        
         inputs = self.tokenizer.batch_encode_plus(batch_text_or_text_pairs=text_pairs,
             add_special_tokens=True, return_token_type_ids=False,
-            pad_to_max_length=True, return_tensors="pt")
+            pad_to_max_length=True, return_tensors="pt", 
+            max_length=max_len)
         for key in inputs.keys():
             inputs[key] = inputs[key].to(self.device)
 
@@ -55,15 +57,11 @@ class SimpleDistilBERT(nn.Module):
         for a, a_i in zip(batch.a, batch.a_index):
             start = len(self.tokenizer.tokenize(batch.context[:a_i])) + 1
             end = len(self.tokenizer.tokenize(batch.context[:a_i + len(a)]))
-            one_hot_start, one_hot_end = torch.zeros(max_len), torch.zeros(max_len)
-            one_hot_start[start] = 1
-            one_hot_end[end] = 1
-            starts.append(one_hot_start)
-            ends.append(one_hot_end)
-        starts = torch.stack(starts).float().to(self.device)
-        ends = torch.stack(ends).float().to(self.device)
+            starts.append(start)
+            ends.append(end)
+        starts = torch.tensor(starts).to(self.device)
+        ends = torch.tensor(ends).to(self.device)
         return inputs, starts, ends
-
 
 
 class AlBertQA(nn.Module):

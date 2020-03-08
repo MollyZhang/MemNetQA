@@ -13,7 +13,7 @@ from seqeval.metrics import f1_score
 
 
 def train(train_data, val_data, model, 
-          lr=1e-5, patience=5, max_epoch=100,
+          lr=1e-5, patience=5, scheduler_patience=10, max_epoch=100,
           print_freq=1):
     t00 = time.time()
     no_improvement = 0
@@ -21,7 +21,7 @@ def train(train_data, val_data, model,
     loss_func = nn.CrossEntropyLoss(reduction='sum')
     opt = optim.Adam(model.parameters(), lr=lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer=opt, factor=0.1, patience=patience)
+        optimizer=opt, factor=0.1, patience=scheduler_patience)
     sec_per_epoch = []
     for epoch in range(max_epoch):
         t0 = time.time() 
@@ -31,7 +31,7 @@ def train(train_data, val_data, model,
         model.train() # turn on training mode
         for batch in train_data:
             opt.zero_grad()
-            pred_answers, loss = model(batch)
+            pred_answers, loss, _ = model(batch)
             loss.backward()
             opt.step()
             running_loss += loss.item()
@@ -66,13 +66,11 @@ def calculate_score(data, model):
     answers = {}
     running_loss = 0
     for batch in data:
-        pred_answers, loss = model(batch)
-        running_loss += loss.item() * len(batch)
+        pred_answers, loss, _ = model(batch)
+        running_loss += loss.item()
         answers.update(pred_answers)    
     final_loss = running_loss / len(data)
     score = evaluation.get_score(data.data, answers)    
-    #print(answers)
-    #print(score)
     return final_loss, score["f1"]
 
 

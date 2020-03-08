@@ -22,6 +22,7 @@ class ParaBatch(object):
         self.version = version
         self.expand_paragraph()
         self.num_qa = self.get_num_qa()
+        self.num_batch = len(self.paragraph)
 
     def expand_paragraph(self):
         self.paragraph = []

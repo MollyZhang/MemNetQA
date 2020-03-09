@@ -85,10 +85,9 @@ class AlBertQA(nn.Module):
             raise
         self.device = device
         self.tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2')
-        self.model =  = AlbertModel.from_pretrained('albert-base-v2').to(self.device)
-        self.linear = nn.Linear(self.model.config.dim,
-                                self.model.config.num_labels).to(self.device)
-        self.dropout = nn.Dropout(self.model.config.qa_dropout).to(self.device)
+        self.model =  AlbertModel.from_pretrained('albert-base-v2').to(self.device)
+        self.linear = nn.Linear(5580,768).to(self.device)
+        self.dropout = nn.Dropout(0.1).to(self.device)
 
     def forward(self, batch):
         inputs, starts, ends = self.prepare_data(batch)

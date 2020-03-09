@@ -39,7 +39,7 @@ def train(train_data, val_data, model, model_name="distilbert",
                 torch.cuda.empty_cache()
                 if save_checkpt:
                     if os.path.exists(filename):
-                        os.remove(filaname)
+                        os.remove(filename)
                     timestamp = datetime.datetime.today().strftime("%m%d%H%M")
                     filename = "{}/data/model_checkpoints/{}_{}.mdl".format(
                         os.getcwd(), model_name, timestamp)

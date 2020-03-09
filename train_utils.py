@@ -14,7 +14,7 @@ from seqeval.metrics import f1_score
 
 def train(train_data, val_data, model, 
           lr=1e-5, patience=5, scheduler_patience=10, max_epoch=100,
-          print_freq=1):
+          print_freq=1, print_batch=False):
     t00 = time.time()
     no_improvement = 0
     best_val_f1 = 0
@@ -30,11 +30,18 @@ def train(train_data, val_data, model,
         running_loss = 0.0
         model.train() # turn on training mode
         for batch in train_data:
+            if print_batch and batch.batch_id % 100 == 0:
+                batch_t0 = time.time()
+                print("batch", batch.batch_id, end=",")
             opt.zero_grad()
             pred_answers, loss, _ = model(batch)
             loss.backward()
             opt.step()
             running_loss += loss.item()
+            if print_batch and batch.batch_id % 100 == 0:
+                batch_time = time.time() - batch_t0
+                epoch_time = batch_time/batch.batch_size * train_data.num_qa
+                print("estimated epoch time: {}s".format(epoch_time))
         epoch_loss = running_loss/len(train_data)
         val_loss, val_f1 = calculate_score(val_data, model) 
         

@@ -7,12 +7,14 @@ import numpy as np
 import pandas as pd
 import re
 import os
+import tqdm
 from transformers import DistilBertTokenizer, DistilBertForQuestionAnswering
 from transformers import DistilBertModel
 
 
 class SimpleDistilBERT(nn.Module):
-    def __init__(self, model_name="distilbert-base-uncased", device="cuda"):
+    def __init__(self, model_name="distilbert-base-uncased", 
+                       device="cuda", chopping=False):
         super().__init__()
         self.device = device
         self.tokenizer = DistilBertTokenizer.from_pretrained(model_name)
@@ -20,6 +22,8 @@ class SimpleDistilBERT(nn.Module):
         self.linear = nn.Linear(self.model.config.dim, 
                                 self.model.config.num_labels).to(self.device)
         self.dropout = nn.Dropout(self.model.config.qa_dropout).to(self.device)
+        self.chopping = chopping # True only if using on original train data
+
 
     def forward(self, batch):
         inputs, starts, ends = self.prepare_data(batch)
@@ -35,7 +39,7 @@ class SimpleDistilBERT(nn.Module):
                 s = torch.argmax(start_logits[i]).item()
                 e = torch.argmax(end_logits[i]).item()
             except:
-                print(i, start_logits.shape, end_logits.shape)
+                print(batch.id, start_logits.shape, end_logits.shape)
                 raise
             pred_answer = self.tokenizer.convert_tokens_to_string(
                 self.tokenizer.convert_ids_to_tokens(inputs["input_ids"][i, s:e+1]))
@@ -43,12 +47,11 @@ class SimpleDistilBERT(nn.Module):
         return pred_answers, loss, logits
 
     def prepare_data(self, batch):
-        text_pairs = [(batch.context, q) for q in batch.q] 
-        max_len = max([len(" ".join([c, q]).split(" ")) for (c, q) in text_pairs])
-        if max_len < 340:
-            max_len = None
+        text_pairs = [(batch.context, q) for q in batch.q]
+        if self.chopping:
+            max_len = max([len(" ".join([c, q]).split(" ")) for (c, q) in text_pairs])
         else:
-            max_len = 512        
+            max_len = None
         inputs = self.tokenizer.batch_encode_plus(batch_text_or_text_pairs=text_pairs,
             add_special_tokens=True, return_token_type_ids=False,
             pad_to_max_length=True, return_tensors="pt", 

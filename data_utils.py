@@ -30,8 +30,8 @@ class ParaBatch(object):
             self.paragraph.extend(i["paragraphs"])
 
     def __iter__(self):
-        for p in self.paragraph:
-            yield Paragraph(p, version=self.version)
+        for i, p in enumerate(self.paragraph):
+            yield Paragraph(p, batch_id=i, version=self.version)
 
     def __len__(self):
         return self.num_qa
@@ -41,11 +41,12 @@ class ParaBatch(object):
 
 
 class Paragraph(object):
-    def __init__(self, p, version="1.1", device="cuda"):
+    def __init__(self, p, batch_id=None, version="1.1", device="cuda"):
         self.context = p["context"]
         self.version = version
         self.expand_qas(p)
         self.batch_size = len(self.q)
+        self.batch_id = batch_id
 
     def expand_qas(self, p):
         self.q = []

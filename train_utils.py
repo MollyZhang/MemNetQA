@@ -20,7 +20,7 @@ def train(train_data, val_data, model, model_name="distilbert",
     t00 = time.time()
     filename = "dummy"
     no_improvement = 0
-    best_val_f1 = 0
+    best_val_f1, best_val_em = 0, 0
     loss_func = nn.CrossEntropyLoss(reduction='sum')
     opt = optim.Adam(model.parameters(), lr=lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
@@ -54,11 +54,12 @@ def train(train_data, val_data, model, model_name="distilbert",
                 epoch_time = batch_time/batch.batch_size * train_data.num_qa
                 print("estimated epoch time: {}s".format(epoch_time))
         epoch_loss = running_loss/len(train_data)
-        val_loss, val_f1 = calculate_score(val_data, model) 
+        val_loss, val_score = calculate_score(val_data, model) 
         
-        if val_f1 > best_val_f1:
+        if val_score["f1"] > best_val_f1:
             no_improvement = 0
-            best_val_f1 = val_f1
+            best_val_f1 = val_score["f1"]
+            best_val_em = val_score["exact"]
             best_model = copy.deepcopy(model)
         else:
             no_improvement += 1
@@ -66,12 +67,13 @@ def train(train_data, val_data, model, model_name="distilbert",
         t_delta = time.time() - t0
         if epoch % print_freq == 0:
             print('Epoch: {}, LR: {}, Train Loss: {:.4f}, Val Loss: {:.4f}, Val f1 {:.3f}, epoch time: {:.1f}s'.format(
-                epoch, opt.param_groups[0]['lr'], epoch_loss, val_loss, val_f1, t_delta))
+                epoch, opt.param_groups[0]['lr'], epoch_loss, val_loss, val_score["f1"], t_delta))
         sec_per_epoch.append(t_delta)
-    train_loss, train_f1 = calculate_score(train_data, best_model)
+    train_loss, train_score = calculate_score(train_data, best_model)
     result = {"trained_model": best_model, 
-              "train f1 score": train_f1, 
+              "train score": train_score, 
               "val f1 score": best_val_f1, 
+              "val exact match score": best_val_em, 
               "train loss": train_loss, 
               "val loss": val_loss,
               "epoch_time": sec_per_epoch,
@@ -90,7 +92,7 @@ def calculate_score(data, model):
         answers.update(pred_answers)    
     final_loss = running_loss / len(data)
     score = evaluation.get_score(data.data, answers)    
-    return final_loss, score["f1"]
+    return final_loss, score
 
 
 def inference(data, model):

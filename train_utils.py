@@ -7,14 +7,16 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
 import numpy as np
+import datetime
+import os
 
 import evaluation
 from seqeval.metrics import f1_score
 
 
-def train(train_data, val_data, model, 
+def train(train_data, val_data, model, model_name="distilbert", 
           lr=1e-5, patience=5, scheduler_patience=10, max_epoch=100,
-          print_freq=1, print_batch=False):
+          print_freq=1, print_batch=False, save_checkpt=True):
     t00 = time.time()
     no_improvement = 0
     best_val_f1 = 0
@@ -30,15 +32,20 @@ def train(train_data, val_data, model,
         running_loss = 0.0
         model.train() # turn on training mode
         for batch in train_data:
-            if print_batch and batch.batch_id % 100 == 0:
+            if batch.batch_id % 1000 == 0:
                 batch_t0 = time.time()
                 print("batch", batch.batch_id, end=",")
+                torch.cuda.empty_cache()
+                if save_checkpt:
+                    timestamp = datetime.datetime.today().strftime("%m%d%H%M")
+                    torch.save(model, "{}/data/model_checkpoints/{}_{}.mdl".format(
+                        os.getcwd(), model_name, timestamp))
             opt.zero_grad()
             pred_answers, loss, _ = model(batch)
             loss.backward()
             opt.step()
             running_loss += loss.item()
-            if print_batch and batch.batch_id % 100 == 0:
+            if print_batch and batch.batch_id % 1000 == 0:
                 batch_time = time.time() - batch_t0
                 epoch_time = batch_time/batch.batch_size * train_data.num_qa
                 print("estimated epoch time: {}s".format(epoch_time))
@@ -57,7 +64,6 @@ def train(train_data, val_data, model,
             print('Epoch: {}, LR: {}, Train Loss: {:.4f}, Val Loss: {:.4f}, Val f1 {:.3f}, epoch time: {:.1f}s'.format(
                 epoch, opt.param_groups[0]['lr'], epoch_loss, val_loss, val_f1, t_delta))
         sec_per_epoch.append(t_delta)
-        torch.cuda.empty_cache()
     train_loss, train_f1 = calculate_score(train_data, best_model)
     result = {"trained_model": best_model, 
               "train f1 score": train_f1, 

@@ -18,6 +18,7 @@ def train(train_data, val_data, model, model_name="distilbert",
           lr=1e-5, patience=5, scheduler_patience=10, max_epoch=100,
           print_freq=1, print_batch=False, save_checkpt=True):
     t00 = time.time()
+    filename = "dummy"
     no_improvement = 0
     best_val_f1 = 0
     loss_func = nn.CrossEntropyLoss(reduction='sum')
@@ -37,9 +38,12 @@ def train(train_data, val_data, model, model_name="distilbert",
                 print("batch", batch.batch_id, end=",")
                 torch.cuda.empty_cache()
                 if save_checkpt:
+                    if os.path.exists(filename):
+                        os.remove(filaname)
                     timestamp = datetime.datetime.today().strftime("%m%d%H%M")
-                    torch.save(model, "{}/data/model_checkpoints/{}_{}.mdl".format(
-                        os.getcwd(), model_name, timestamp))
+                    filename = "{}/data/model_checkpoints/{}_{}.mdl".format(
+                        os.getcwd(), model_name, timestamp)
+                    torch.save(model, filename)
             opt.zero_grad()
             pred_answers, loss, _ = model(batch)
             loss.backward()
@@ -74,6 +78,7 @@ def train(train_data, val_data, model, model_name="distilbert",
               "total_time": time.time() - t00,
               }
     return result
+
 
 def calculate_score(data, model):
     model.eval() 

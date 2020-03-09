@@ -33,16 +33,15 @@ def train(train_data, val_data, model, model_name="distilbert",
         running_loss = 0.0
         model.train() # turn on training mode
         for batch in train_data:
+            torch.cuda.empty_cache()
             if batch.batch_id % 1000 == 0:
                 batch_t0 = time.time()
                 print("batch", batch.batch_id, end=",")
-                torch.cuda.empty_cache()
                 if save_checkpt:
                     if os.path.exists(filename):
                         os.remove(filename)
-                    timestamp = datetime.datetime.today().strftime("%m%d%H%M")
-                    filename = "{}/data/model_checkpoints/{}_{}.mdl".format(
-                        os.getcwd(), model_name, timestamp)
+                    filename = "{}/data/model_checkpoints/{}_checkpt.mdl".format(
+                        os.getcwd(), model_name)
                     torch.save(model, filename)
             opt.zero_grad()
             pred_answers, loss, _ = model(batch)
@@ -87,6 +86,7 @@ def calculate_score(data, model):
     answers = {}
     running_loss = 0
     for batch in data:
+        torch.cuda.empty_cache()
         pred_answers, loss, _ = model(batch)
         running_loss += loss.item()
         answers.update(pred_answers)    
